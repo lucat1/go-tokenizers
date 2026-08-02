@@ -5,9 +5,6 @@ use std::sync::Mutex;
 use thiserror::Error;
 use tokenizers::Tokenizer;
 
-// #[global_allocator]
-// static ALLOC: wee_alloc::WeeAlloc = wee_alloc::WeeAlloc::INIT;
-
 #[derive(Error, Debug)]
 pub enum Error {
     #[error("loading tokenizer: {0}")]
