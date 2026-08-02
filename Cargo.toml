@@ -1,0 +1,15 @@
+[package]
+name = "go-tokenizers"
+version = "0.1.0"
+edition = "2024"
+
+[lib]
+crate-type = ["cdylib"]
+name = "tokenizers"
+path = "tokenizers.rs"
+
+[dependencies]
+once_cell = { version = "1.21.4", default-features = false, features = ["std"] }
+thiserror = { version = "2.0.19", default-features = false }
+tokenizers = { version = "0.23.1", default-features = false, features = ["fancy-regex"] }
+wee_alloc = { version = "0.4.5", default-features = false }
