@@ -5,8 +5,8 @@ use std::sync::Mutex;
 use thiserror::Error;
 use tokenizers::Tokenizer;
 
-#[global_allocator]
-static ALLOC: wee_alloc::WeeAlloc = wee_alloc::WeeAlloc::INIT;
+// #[global_allocator]
+// static ALLOC: wee_alloc::WeeAlloc = wee_alloc::WeeAlloc::INIT;
 
 #[derive(Error, Debug)]
 pub enum Error {
@@ -76,8 +76,8 @@ impl Return {
             Return::None => (false, 0, 0),
         };
 
-        assert!(size <= 0x7fff_ffff); // must fit in 31 bits
-        ((is_error as u64) << 63) | ((ptr as u64) << 32) | (size as u64)
+        debug_assert!(size <= 0x7fff_ffff); // must fit in 31 bits
+        ((is_error as u64) << 63) | ((ptr as u64) << 31) | ((size & 0x7fff_ffff) as u64)
     }
 }
 

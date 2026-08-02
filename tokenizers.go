@@ -106,7 +106,7 @@ func (t *Tokenizer) loadTokenizer(ctx context.Context, bytes []byte) error {
 	return err
 }
 
-func (t *Tokenizer) Encode(ctx context.Context, text string) (vec []uint32, err error) {
+func (t *Tokenizer) Encode(ctx context.Context, text string) (ids []uint32, err error) {
 	bytes := []byte(text)
 	size := uint32(len(bytes))
 
@@ -129,27 +129,27 @@ func (t *Tokenizer) Encode(ctx context.Context, text string) (vec []uint32, err 
 		return nil, fmt.Errorf("encode: %w", err)
 	}
 
-	cell, err := t.decodeReturn(results)
+	vec, err := t.decodeReturn(results)
 	if err != nil {
 		return nil, err
 	}
 
-	if cell.size == 0 {
+	if vec.size == 0 {
 		return []uint32{}, nil
 	}
 
-	idBytes, ok := t.module.Memory().Read(cell.ptr, cell.size*4)
+	idBytes, ok := t.module.Memory().Read(vec.ptr, vec.size*4)
 	if !ok {
-		return nil, fmt.Errorf("read encode result: %w", ErrMemoryWrite)
+		return nil, fmt.Errorf("read encode result: %w", ErrMemoryRead)
 	}
 
-	ids := make([]uint32, cell.size)
-	for i := range cell.size {
+	ids = make([]uint32, vec.size)
+	for i := range vec.size {
 		ids[i] = binary.LittleEndian.Uint32(idBytes[i*4 : i*4+4])
 	}
 
 	defer func() {
-		if err := t.dealloc(ctx, cell.ptr, cell.size*4); err != nil {
+		if err := t.dealloc(ctx, vec.ptr, vec.size*4); err != nil {
 			err = errors.Join(err, fmt.Errorf("deallocating output memory: %w", err))
 		}
 	}()
@@ -178,25 +178,25 @@ func (t *Tokenizer) dealloc(ctx context.Context, ptr uint32, size uint32) error 
 	return nil
 }
 
-type cell struct {
+type vec struct {
 	ptr  uint32
 	size uint32
 }
 
-func (t *Tokenizer) decodeReturn(results []uint64) (cell, error) {
+func (t *Tokenizer) decodeReturn(results []uint64) (vec, error) {
 	data, err := firstReturn(results)
 	if err != nil {
-		return cell{}, err
+		return vec{}, err
 	}
 
 	isErr := (data >> 63) != 0
-	ptr := uint32((data >> 32) & 0x7fff_ffff)
-	size := uint32(data & 0xffff_ffff)
+	ptr := uint32(data >> 31)
+	size := uint32(data & 0x7fffffff)
 
 	if isErr {
-		return cell{}, t.readError(ptr, size)
+		return vec{}, t.readError(ptr, size)
 	}
-	return cell{ptr: ptr, size: size}, nil
+	return vec{ptr: ptr, size: size}, nil
 }
 
 func (t *Tokenizer) readError(ptr, size uint32) error {
