@@ -4,6 +4,7 @@ wasm:
 	go vet -v
 
 release:
+	git branch -D release
 	git checkout -b release
 	git reset --hard main
 	make wasm
