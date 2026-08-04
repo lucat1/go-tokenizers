@@ -1,7 +1,7 @@
 use once_cell::sync::Lazy;
 use std::mem::MaybeUninit;
 use std::slice;
-use std::sync::Mutex;
+use std::sync::{Mutex, OnceLock};
 use thiserror::Error;
 use tokenizers::Tokenizer;
 
@@ -96,7 +96,7 @@ impl From<Result<Box<[u32]>, Error>> for Return {
     }
 }
 
-static TOKENIZER: Lazy<Mutex<Option<Tokenizer>>> = Lazy::new(|| Mutex::new(None));
+static TOKENIZER: OnceLock<Tokenizer> = OnceLock::new();
 
 #[cfg_attr(all(target_arch = "wasm32"), unsafe(export_name = "load_tokenizer"))]
 pub extern "C" fn _load_tokenizer(ptr: *const u8, len: usize) -> u64 {
@@ -107,7 +107,7 @@ pub extern "C" fn _load_tokenizer(ptr: *const u8, len: usize) -> u64 {
 
 fn load_tokenizer(bytes: &[u8]) -> Result<(), Error> {
     let tokenizer = Tokenizer::from_bytes(bytes).map_err(Error::Load)?;
-    *TOKENIZER.lock().unwrap() = Some(tokenizer);
+    TOKENIZER.get_or_init(|| tokenizer);
     Ok(())
 }
 
@@ -123,8 +123,7 @@ pub extern "C" fn _encode(ptr: *const u8, len: usize) -> u64 {
 }
 
 fn encode(text: &str) -> Result<Box<[u32]>, Error> {
-    let tokenizer = TOKENIZER.lock().unwrap();
-    let tokenizer = tokenizer.as_ref().ok_or(Error::Uninitialized)?;
+    let tokenizer = TOKENIZER.get().ok_or(Error::Uninitialized)?;
     let encoding = tokenizer.encode(text, true).map_err(Error::Encode)?;
 
     Ok(encoding.get_ids().to_vec().into_boxed_slice())

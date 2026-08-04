@@ -39,10 +39,15 @@ func New(ctx context.Context, configuration []byte) (*Tokenizer, error) {
 
 	closer, err := wasi_snapshot_preview1.Instantiate(ctx, rt)
 	if err != nil {
-		return nil, fmt.Errorf("could not instantiate wasi_snapshot_preview1 runtime: %w", err)
+		return nil, fmt.Errorf("instantiating wasi_snapshot_preview1: %w", err)
 	}
 
-	mod, err := rt.Instantiate(ctx, wasmBytes)
+	module, err := rt.CompileModule(ctx, wasmBytes)
+	if err != nil {
+		return nil, fmt.Errorf("compiling WASM module: %w", err)
+	}
+
+	mod, err := rt.InstantiateModule(ctx, module, wazero.NewModuleConfig().WithName(""))
 	if err != nil {
 		return nil, err
 	}
@@ -138,6 +143,12 @@ func (t *Tokenizer) Encode(ctx context.Context, text string) (ids []uint32, err 
 		return []uint32{}, nil
 	}
 
+	defer func() {
+		if err := t.dealloc(ctx, vec.ptr, vec.size*4); err != nil {
+			err = errors.Join(err, fmt.Errorf("deallocating output memory: %w", err))
+		}
+	}()
+
 	idBytes, ok := t.module.Memory().Read(vec.ptr, vec.size*4)
 	if !ok {
 		return nil, fmt.Errorf("read encode result: %w", ErrMemoryRead)
@@ -147,12 +158,6 @@ func (t *Tokenizer) Encode(ctx context.Context, text string) (ids []uint32, err 
 	for i := range vec.size {
 		ids[i] = binary.LittleEndian.Uint32(idBytes[i*4 : i*4+4])
 	}
-
-	defer func() {
-		if err := t.dealloc(ctx, vec.ptr, vec.size*4); err != nil {
-			err = errors.Join(err, fmt.Errorf("deallocating output memory: %w", err))
-		}
-	}()
 
 	return ids, nil
 }
