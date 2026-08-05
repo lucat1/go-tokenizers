@@ -11,11 +11,18 @@ import (
 )
 
 var (
-	ErrReadError      = errors.New("could not read error message")
+	// ErrReadError indicates the failure to read the error message from the WASM runtime.
+	ErrReadError = errors.New("could not read error message")
+	// ErrInvalidReturns indicates an unexpected amount of return values from the WASM function call.
 	ErrInvalidReturns = errors.New("expected exactly one return value")
-	ErrMemoryWrite    = errors.New("memory write failed")
-	ErrMemoryRead     = errors.New("memory read failed")
-	ErrRuntime        = errors.New("runtime error")
+	// ErrMemoryWrite indicates a failure to write to a WASM memory address.
+	ErrMemoryWrite = errors.New("memory write failed")
+	// ErrMemoryRead indicates a failure to read from a WASM memory address.
+	ErrMemoryRead = errors.New("memory read failed")
+	// ErrRuntime wraps any runtime error coming from the Rust code in the WASM
+	// runtime. It can be used to differentiate between errors originating from
+	// the Go wrapper or the Rust tokenizer implementation.
+	ErrRuntime = errors.New("runtime error")
 )
 
 type tokenizer struct {

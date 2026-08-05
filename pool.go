@@ -12,10 +12,18 @@ import (
 const graceTime = time.Second * 5
 
 var (
+	// ErrInvalidPoolConfiguration is returned if any of the pool worker
+	// configuration values don't make sense on their own.
 	ErrInvalidPoolConfiguration = errors.New("invalid pool configuration")
-	ErrInvalidWorkers           = errors.New("minWorkers > maxWorkers or minWorkers > maxIdle")
-	ErrClosed                   = errors.New("tokenizer pool is shutting down")
-	ErrLeak                     = errors.New("pool shutdown leaked tokenizers")
+	// ErrInvalidWorkers is returned if any of the pool worker configuration
+	// values are incompatible among themselves.
+	ErrInvalidWorkers = errors.New("minWorkers > maxWorkers or minWorkers > maxIdle")
+	// ErrClosed is returned when attempting to obtain a worker from a pool which
+	// has been closed.
+	ErrClosed = errors.New("tokenizer pool is shutting down")
+	// ErrLeak is returned when the pool leaked workers: some workers were taken
+	// from the pool but not returned, so we can't guarantee they have been closed.
+	ErrLeak = errors.New("pool shutdown leaked tokenizers")
 )
 
 type closer interface {
