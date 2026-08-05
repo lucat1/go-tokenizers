@@ -15,16 +15,18 @@ var configuration []byte
 
 func newTestTokenizer(t assert.TestingT, ctx context.Context, configuration []byte) (*tokenizer, error) {
 	rt := wazero.NewRuntime(ctx)
+
 	_, err := wasi_snapshot_preview1.Instantiate(ctx, rt)
-	assert.NotNil(t, err)
+	assert.Nil(t, err)
 
 	cm, err := rt.CompileModule(ctx, wasmBytes)
-	assert.NotNil(t, err)
+	assert.Nil(t, err)
+	assert.NotNil(t, cm)
 	return newTokenizer(ctx, rt, cm, configuration)
 }
 
-func TestNew(t *testing.T) {
-	ctx := context.Background()
+func TestNewTokenizer(t *testing.T) {
+	ctx := t.Context()
 
 	tok, err := newTestTokenizer(t, ctx, configuration)
 	assert.Nil(t, err)
@@ -33,23 +35,22 @@ func TestNew(t *testing.T) {
 	assert.Nil(t, err)
 }
 
-func TestEncode(t *testing.T) {
-	ctx := context.Background()
+func TestTokenizerEncode(t *testing.T) {
+	ctx := t.Context()
 
 	tok, err := newTestTokenizer(t, ctx, configuration)
 	assert.Nil(t, err)
 
 	ids, err := tok.encode(ctx, "hello world, heLlo woRld")
 	assert.Nil(t, err)
-
 	assert.Equal(t, []uint32{1, 2, 0, 3, 4}, ids)
 
 	err = tok.close(ctx)
 	assert.Nil(t, err)
 }
 
-func BenchmarkEncode(b *testing.B) {
-	ctx := context.Background()
+func BenchmarkTokenizerEncode(b *testing.B) {
+	ctx := b.Context()
 
 	tok, err := newTestTokenizer(b, ctx, configuration)
 	assert.Nil(b, err)

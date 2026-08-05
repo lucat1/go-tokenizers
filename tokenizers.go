@@ -26,7 +26,7 @@ type Tokenizers struct {
 	cm     wazero.CompiledModule
 	closer api.Closer
 
-	pool *pool
+	pool *pool[*tokenizer]
 }
 
 func New(ctx context.Context, configuration []byte, config TokenizersConfig) (*Tokenizers, error) {
@@ -34,7 +34,10 @@ func New(ctx context.Context, configuration []byte, config TokenizersConfig) (*T
 		config.MaxWorkers = runtime.NumCPU()
 	}
 	if config.MinWorkers == 0 {
-		config.MinWorkers = max(1, config.MaxWorkers/4)
+		config.MinWorkers = min(max(1, config.MaxWorkers/4), config.MaxWorkers)
+	}
+	if config.IdleWorkers == 0 {
+		config.IdleWorkers = config.MinWorkers
 	}
 
 	rt := wazero.NewRuntime(ctx)
@@ -72,11 +75,16 @@ func (t *Tokenizers) Close(ctx context.Context) error {
 	return errors.Join(t.pool.close(ctx), t.closer.Close(ctx), t.rt.Close(ctx))
 }
 
-func (t *Tokenizers) Encode(ctx context.Context, text string) ([]uint32, error) {
+func (t *Tokenizers) Encode(ctx context.Context, text string) (tokens []uint32, err error) {
 	tok, err := t.pool.get(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("getting tokenizer from pool: %w", err)
 	}
+	defer func() {
+		if e := t.pool.put(tok); e != nil {
+			err = errors.Join(err, e)
+		}
+	}()
 
 	return tok.encode(ctx, text)
 }

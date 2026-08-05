@@ -4,59 +4,69 @@ import (
 	"context"
 	"errors"
 	"sync/atomic"
+	"time"
 
 	"golang.org/x/sync/errgroup"
 )
 
+const graceTime = time.Second * 5
+
 var (
 	ErrInvalidPoolConfiguration = errors.New("invalid pool configuration")
-	ErrInvalidWorkers           = errors.New("minWorkers > maxWorkers")
+	ErrInvalidWorkers           = errors.New("minWorkers > maxWorkers or minWorkers > maxIdle")
 	ErrClosed                   = errors.New("tokenizer pool is shutting down")
 	ErrLeak                     = errors.New("pool shutdown leaked tokenizers")
 )
 
-type pool struct {
+type closer interface {
+	close(ctx context.Context) error
+}
+
+type pool[T closer] struct {
 	ctx context.Context
 
-	idle  chan *tokenizer
-	newFn func() (*tokenizer, error)
+	idle  chan T
+	unit  T
+	newFn func(ctx context.Context) (T, error)
 
 	created    atomic.Int32
 	maxWorkers int
 	closed     atomic.Bool
 }
 
-func newPool(
+func newPool[T closer](
 	ctx context.Context,
 	minWorkers, maxWorkers, maxIdle int,
-	newFn func(ctx context.Context) (*tokenizer, error),
-) (*pool, error) {
+	newFn func(ctx context.Context) (T, error),
+) (*pool[T], error) {
 	if minWorkers < 0 || maxWorkers <= 0 || maxIdle < 0 {
 		return nil, ErrInvalidPoolConfiguration
 	}
-	if minWorkers > maxWorkers {
+	if minWorkers > maxWorkers || minWorkers > maxIdle {
 		return nil, ErrInvalidWorkers
 	}
 	if maxIdle > maxWorkers {
 		maxIdle = maxWorkers
 	}
 
-	p := &pool{
-		idle:       make(chan *tokenizer, maxIdle),
+	p := &pool[T]{
+		idle:  make(chan T, maxIdle),
+		newFn: newFn,
+
 		maxWorkers: maxWorkers,
 	}
 
 	eg, ctx := errgroup.WithContext(ctx)
 	eg.SetLimit(int(maxWorkers))
-	tokenizers := make([]*tokenizer, minWorkers)
+	workers := make([]T, minWorkers)
 	for i := range minWorkers {
 		eg.Go(func() error {
-			tok, err := newFn(ctx)
+			w, err := newFn(ctx)
 			if err != nil {
 				return err
 			}
 
-			tokenizers[i] = tok
+			workers[i] = w
 			return nil
 		})
 	}
@@ -65,19 +75,19 @@ func newPool(
 		return nil, err
 	}
 
-	for _, tok := range tokenizers {
+	for _, tok := range workers {
 		p.idle <- tok
 	}
 
 	return p, nil
 }
 
-func (p *pool) get(ctx context.Context) (*tokenizer, error) {
+func (p *pool[T]) get(ctx context.Context) (T, error) {
 	if p.closed.Load() {
-		return nil, ErrClosed
+		return p.unit, ErrClosed
 	}
 
-	// If we have a tokenizers to use right await, quickly return.
+	// If we have a worker to use right await, quickly return.
 	select {
 	case tok := <-p.idle:
 		return tok, nil
@@ -87,15 +97,15 @@ func (p *pool) get(ctx context.Context) (*tokenizer, error) {
 	for {
 		n := p.created.Load()
 		if int(n) >= p.maxWorkers {
-			// Cannot create a new tokenizer, the pool is already saturated.
+			// Cannot create a new worker, the pool is already saturated.
 			// Exit from loop and wait on p.idle
 			break
 		}
 		if p.created.CompareAndSwap(n, n+1) {
-			tok, err := p.newFn()
+			tok, err := p.newFn(p.ctx)
 			if err != nil {
 				p.created.Add(-1)
-				return nil, err
+				return p.unit, err
 			}
 			return tok, nil
 		}
@@ -106,35 +116,58 @@ func (p *pool) get(ctx context.Context) (*tokenizer, error) {
 	case tok := <-p.idle:
 		return tok, nil
 	case <-ctx.Done():
-		return nil, ctx.Err()
+		return p.unit, ctx.Err()
 	}
 }
 
-func (p *pool) put(tok *tokenizer) error {
+func (p *pool[T]) put(w T) error {
 	if !p.closed.Load() && len(p.idle) < cap(p.idle) {
-		p.idle <- tok
+		p.idle <- w
 		return nil
 	}
 
-	// Too many idle tokenizers; shrink.
+	// Too many idle workers: shrink.
 	p.created.Add(-1)
-	return tok.close(p.ctx)
+	return w.close(p.ctx)
 }
 
-func (p *pool) close(ctx context.Context) error {
+func (p *pool[T]) close(ctx context.Context) error {
+	var closeErrors []error
+
 	p.closed.Store(true)
 	for len(p.idle) > 0 {
 		select {
 		case tok := <-p.idle:
-			tok.close(ctx)
+			if err := tok.close(ctx); err != nil {
+				closeErrors = append(closeErrors, err)
+			}
 			p.created.Add(-1)
 		case <-ctx.Done():
 			return ctx.Err()
 		}
 	}
 
-	if p.created.Load() > 0 {
-		return ErrLeak
+	graceCtx, cancel := context.WithTimeout(ctx, graceTime)
+	defer cancel()
+
+	for p.created.Load() > 0 && graceCtx.Err() == nil {
+		select {
+		case tok := <-p.idle:
+			if err := tok.close(ctx); err != nil {
+				closeErrors = append(closeErrors, err)
+			}
+			p.created.Add(-1)
+		case <-graceCtx.Done():
+			// If our grace context triggered the timeout, then we are accepting that
+			// the pool will leak workers, and we should return this as an error.
+			if graceCtx.Err() != nil {
+				closeErrors = append(closeErrors, ErrLeak)
+				break
+			}
+
+			closeErrors = append(closeErrors, ctx.Err())
+		}
 	}
-	return nil
+
+	return errors.Join(closeErrors...)
 }
