@@ -11,9 +11,9 @@ import (
 )
 
 //go:embed tokenizer.json
-var configuration []byte
+var testConfiguration []byte
 
-func newTestTokenizer(t assert.TestingT, ctx context.Context, configuration []byte) (*tokenizer, error) {
+func newTestTokenizer(t assert.TestingT, ctx context.Context) (*tokenizer, error) {
 	rt := wazero.NewRuntime(ctx)
 
 	_, err := wasi_snapshot_preview1.Instantiate(ctx, rt)
@@ -22,13 +22,13 @@ func newTestTokenizer(t assert.TestingT, ctx context.Context, configuration []by
 	cm, err := rt.CompileModule(ctx, wasmBytes)
 	assert.Nil(t, err)
 	assert.NotNil(t, cm)
-	return newTokenizer(ctx, rt, cm, configuration)
+	return newTokenizer(ctx, rt, cm, testConfiguration)
 }
 
 func TestNewTokenizer(t *testing.T) {
 	ctx := t.Context()
 
-	tok, err := newTestTokenizer(t, ctx, configuration)
+	tok, err := newTestTokenizer(t, ctx)
 	assert.Nil(t, err)
 
 	err = tok.close(ctx)
@@ -38,7 +38,7 @@ func TestNewTokenizer(t *testing.T) {
 func TestTokenizerEncode(t *testing.T) {
 	ctx := t.Context()
 
-	tok, err := newTestTokenizer(t, ctx, configuration)
+	tok, err := newTestTokenizer(t, ctx)
 	assert.Nil(t, err)
 
 	ids, err := tok.encode(ctx, "hello world, heLlo woRld")
@@ -52,7 +52,7 @@ func TestTokenizerEncode(t *testing.T) {
 func BenchmarkTokenizerEncode(b *testing.B) {
 	ctx := b.Context()
 
-	tok, err := newTestTokenizer(b, ctx, configuration)
+	tok, err := newTestTokenizer(b, ctx)
 	assert.Nil(b, err)
 
 	text := "hello world this is a benchmark"

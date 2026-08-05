@@ -1,3 +1,31 @@
+// Package tokenizers provides CGo-free Go bindings to huggingface's `tokenizers`
+// library via WASM. Emphasis has been put into ensuring maximum performance
+// can be squeezed from this arrangement.
+//
+// A tokenizer converts text into a sequence of token IDs suitable for
+// downstream machine learning models. All algorithms supported by huggingface's
+// Rust library are also supported here. Create a [Tokenizers] pool once and
+// reuse it across multiple [Encode] calls. The [Tokenizers] is thread-safe and
+// its level of parallelism can be tuned.
+//
+// Basic usage:
+//
+//	//go:embed tokenizer.json
+//	var configuration []byte
+//
+//	ctx := context.TODO()
+//
+//	tok, err := tokenizers.New(ctx, configuration, tokenizers.TokenizersConfig{})
+//	if err != nil {
+//		panic(err)
+//	}
+//
+//	ids, err := tok.Encode(ctx, "Hello, world!")
+//	if err != nil {
+//		panic(err)
+//	}
+//
+//	fmt.Println(ids)
 package tokenizers
 
 import (
