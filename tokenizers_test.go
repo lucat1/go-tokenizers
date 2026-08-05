@@ -10,7 +10,7 @@ import (
 func TestNewTokenizers(t *testing.T) {
 	ctx := t.Context()
 
-	tok, err := New(ctx, configuration, TokenizersConfig{MaxWorkers: 1})
+	tok, err := New(ctx, testConfiguration, TokenizersConfig{MaxWorkers: 1})
 	assert.Nil(t, err)
 
 	err = tok.Close(ctx)
@@ -20,7 +20,7 @@ func TestNewTokenizers(t *testing.T) {
 func TestTokenizersEncode(t *testing.T) {
 	ctx := t.Context()
 
-	tok, err := New(ctx, configuration, TokenizersConfig{MaxWorkers: 1})
+	tok, err := New(ctx, testConfiguration, TokenizersConfig{MaxWorkers: 1})
 	assert.Nil(t, err)
 
 	ids, err := tok.Encode(ctx, "hello world, heLlo woRld")
@@ -34,7 +34,7 @@ func TestTokenizersEncode(t *testing.T) {
 func BenchmarkTokenizersEncode(b *testing.B) {
 	ctx := b.Context()
 
-	tok, err := New(ctx, configuration, TokenizersConfig{})
+	tok, err := New(ctx, testConfiguration, TokenizersConfig{})
 	assert.Nil(b, err)
 
 	text := "hello world this is a benchmark"
