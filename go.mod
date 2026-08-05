@@ -5,6 +5,7 @@ go 1.26.5
 require (
 	github.com/stretchr/testify v1.11.1
 	github.com/tetratelabs/wazero v1.12.0
+	golang.org/x/sync v0.22.0
 )
 
 require (
